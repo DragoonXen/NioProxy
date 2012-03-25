@@ -34,7 +34,8 @@ public class NioProxy implements Runnable {
 	private ByteBuffer buffer = ByteBuffer.allocate(8192);
 
 	private List<ConfigNode> configNodes;
-	private Map<SelectableChannel, LinkedList<ByteBuffer>> pendingMessages = new HashMap<SelectableChannel, LinkedList<ByteBuffer>>();
+	private Map<SelectableChannel, LinkedList<ByteBuffer>> pendingMessages = new HashMap<SelectableChannel,
+			LinkedList<ByteBuffer>>();
 	private Map<SelectableChannel, Integer> writedBytes = new HashMap<SelectableChannel, Integer>();
 	private Map<SelectableChannel, Integer> readedBytes = new HashMap<SelectableChannel, Integer>();
 	private Set<SelectableChannel> channels = new HashSet<SelectableChannel>();
@@ -160,7 +161,8 @@ public class NioProxy implements Runnable {
 		channels.add(remoteSocketChannel);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug(String.format("Channels pair %s %s", localSocketChannel.hashCode(), remoteSocketChannel.hashCode()));
+			LOG.debug(String.format("Channels pair %s %s", localSocketChannel.hashCode(),
+					remoteSocketChannel.hashCode()));
 		}
 	}
 
@@ -191,9 +193,6 @@ public class NioProxy implements Runnable {
 
 		buffer.clear();
 
-		SelectableChannel writeSelectionChannel = (SelectableChannel) readingSelectionKey.attachment();
-		LinkedList<ByteBuffer> queue = pendingMessages.get(writeSelectionChannel);
-
 		int numRead;
 		try {
 			numRead = socketChannel.read(buffer);
@@ -219,7 +218,11 @@ public class NioProxy implements Runnable {
 		byte write[] = new byte[numRead];
 		System.arraycopy(buffer.array(), 0, write, 0, numRead);
 
-		queue.add(ByteBuffer.wrap(write));
+		SelectableChannel writeSelectionChannel = (SelectableChannel) readingSelectionKey.attachment();
+		LinkedList<ByteBuffer> queue = pendingMessages.get(writeSelectionChannel);
+		if (queue != null) {
+			queue.add(ByteBuffer.wrap(write));
+		}
 		readedBytes.put(socketChannel, readedBytes.get(socketChannel) + numRead);
 
 		SelectionKey writeSelectionKey = writeSelectionChannel.keyFor(connectionsSelector);
@@ -238,7 +241,8 @@ public class NioProxy implements Runnable {
 	private void closeChannel(SelectableChannel channel) {
 		if (LOG.isInfoEnabled()) {
 			LOG.info("Close connection " + channel.hashCode());
-			LOG.info(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel), readedBytes.get(channel)));
+			LOG.info(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel),
+					readedBytes.get(channel)));
 		}
 		pendingMessages.remove(channel);
 		writedBytes.remove(channel);
