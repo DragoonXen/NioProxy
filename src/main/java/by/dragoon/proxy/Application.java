@@ -30,7 +30,6 @@ public class Application {
 		}
 
 		Thread workingThread = new Thread(new NioProxy(getConfiguredNodes(properties)));
-		workingThread.setDaemon(true);
 		workingThread.start();
 
 		Scanner consoleScanner = new Scanner(System.in);
@@ -41,6 +40,11 @@ public class Application {
 		} while (!"exit".equals(command));
 
 		workingThread.interrupt();
+		try {
+			workingThread.join();
+		} catch (InterruptedException e) {
+			LOG.error(e, e);
+		}
 	}
 
 	private static List<ConfigNode> getConfiguredNodes(Properties properties) {

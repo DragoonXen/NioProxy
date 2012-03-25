@@ -13,10 +13,12 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * User: dragoon
@@ -35,6 +37,7 @@ public class NioProxy implements Runnable {
 	private Map<SelectableChannel, LinkedList<ByteBuffer>> pendingMessages = new HashMap<SelectableChannel, LinkedList<ByteBuffer>>();
 	private Map<SelectableChannel, Integer> writedBytes = new HashMap<SelectableChannel, Integer>();
 	private Map<SelectableChannel, Integer> readedBytes = new HashMap<SelectableChannel, Integer>();
+	private Set<SelectableChannel> channels = new HashSet<SelectableChannel>();
 
 	public NioProxy(List<ConfigNode> configNodes) {
 		this.configNodes = configNodes;
@@ -50,6 +53,16 @@ public class NioProxy implements Runnable {
 			LOG.error(e, e);
 		} finally {
 			if (connectionsSelector != null) {
+				SelectableChannel channels[] = new SelectableChannel[this.channels.size()];
+				this.channels.toArray(channels);
+				for (SelectableChannel channel : channels) {
+					closeChannel(channel);
+				}
+				for (SelectableChannel channel : channels) {
+					if (channel.isOpen()) {
+						closeChannel(channel);
+					}
+				}
 				try {
 					connectionsSelector.close();
 				} catch (IOException e) {
@@ -69,6 +82,7 @@ public class NioProxy implements Runnable {
 
 		for (ConfigNode configNode : configNodes) {
 			ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+			channels.add(serverSocketChannel);
 			serverSocketChannel.configureBlocking(false);
 			InetSocketAddress socketAddress = new InetSocketAddress(configNode.getLocalPort());
 
@@ -125,26 +139,28 @@ public class NioProxy implements Runnable {
 					configNode.getLocalPort()));
 		}
 
-		SocketChannel readSocketChannel = serverSocketChannel.accept();
-		readSocketChannel.configureBlocking(false);
-		SelectionKey acceptedSelectionKey = readSocketChannel.register(connectionsSelector, SelectionKey.OP_READ);
+		SocketChannel localSocketChannel = serverSocketChannel.accept();
+		localSocketChannel.configureBlocking(false);
+		SelectionKey acceptedSelectionKey = localSocketChannel.register(connectionsSelector, SelectionKey.OP_READ);
 
-		SocketChannel connectSocketChannel = SocketChannel.open();
-		connectSocketChannel.configureBlocking(false);
-		connectSocketChannel.connect(configNode.getRemoteSocketAdress());
-		SelectionKey connectedSelectionKey = connectSocketChannel.register(connectionsSelector, SelectionKey.OP_CONNECT);
-		connectedSelectionKey.attach(readSocketChannel);
-		acceptedSelectionKey.attach(connectSocketChannel);
+		SocketChannel remoteSocketChannel = SocketChannel.open();
+		remoteSocketChannel.configureBlocking(false);
+		remoteSocketChannel.connect(configNode.getRemoteSocketAdress());
+		SelectionKey connectedSelectionKey = remoteSocketChannel.register(connectionsSelector, SelectionKey.OP_CONNECT);
+		connectedSelectionKey.attach(localSocketChannel);
+		acceptedSelectionKey.attach(remoteSocketChannel);
 
-		pendingMessages.put(readSocketChannel, new LinkedList<ByteBuffer>());
-		pendingMessages.put(connectSocketChannel, new LinkedList<ByteBuffer>());
-		readedBytes.put(readSocketChannel, 0);
-		readedBytes.put(connectSocketChannel, 0);
-		writedBytes.put(readSocketChannel, 0);
-		writedBytes.put(connectSocketChannel, 0);
+		pendingMessages.put(localSocketChannel, new LinkedList<ByteBuffer>());
+		pendingMessages.put(remoteSocketChannel, new LinkedList<ByteBuffer>());
+		readedBytes.put(localSocketChannel, 0);
+		readedBytes.put(remoteSocketChannel, 0);
+		writedBytes.put(localSocketChannel, 0);
+		writedBytes.put(remoteSocketChannel, 0);
+		channels.add(localSocketChannel);
+		channels.add(remoteSocketChannel);
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug(String.format("Channels pair %s %s", readSocketChannel.hashCode(), connectSocketChannel.hashCode()));
+			LOG.debug(String.format("Channels pair %s %s", localSocketChannel.hashCode(), remoteSocketChannel.hashCode()));
 		}
 	}
 
@@ -156,6 +172,8 @@ public class NioProxy implements Runnable {
 
 		try {
 			socketChannel.finishConnect();
+		} catch (ClosedByInterruptException e) {
+			throw e;
 		} catch (IOException e) {
 			LOG.error(e, e);
 			closeChannel(socketChannel);
@@ -165,7 +183,7 @@ public class NioProxy implements Runnable {
 		selectionKey.interestOps(SelectionKey.OP_WRITE);
 	}
 
-	private void readData(SelectionKey readingSelectionKey) {
+	private void readData(SelectionKey readingSelectionKey) throws ClosedByInterruptException {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Read access " + readingSelectionKey.channel().hashCode());
 		}
@@ -179,6 +197,8 @@ public class NioProxy implements Runnable {
 		int numRead;
 		try {
 			numRead = socketChannel.read(buffer);
+		} catch (ClosedByInterruptException e) {
+			throw e;
 		} catch (IOException e) {
 			if (PEER_RESET_CONNECTION_EXCEPTION.equals(e.toString())) {
 				if (LOG.isInfoEnabled()) {
@@ -216,9 +236,9 @@ public class NioProxy implements Runnable {
 	}
 
 	private void closeChannel(SelectableChannel channel) {
-		if (LOG.isDebugEnabled()) {
-			LOG.debug("Close connection " + channel.hashCode());
-			LOG.debug(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel), readedBytes.get(channel)));
+		if (LOG.isInfoEnabled()) {
+			LOG.info("Close connection " + channel.hashCode());
+			LOG.info(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel), readedBytes.get(channel)));
 		}
 		pendingMessages.remove(channel);
 		writedBytes.remove(channel);
@@ -226,13 +246,14 @@ public class NioProxy implements Runnable {
 
 		try {
 			channel.close();
+			channels.remove(channel);
 		} catch (IOException e) {
 			LOG.error(e, e);
 		}
 		channel.keyFor(connectionsSelector).cancel();
 	}
 
-	private void writeData(SelectionKey selectionKey) {
+	private void writeData(SelectionKey selectionKey) throws ClosedByInterruptException {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Write access " + selectionKey.channel().hashCode());
 		}
@@ -245,6 +266,8 @@ public class NioProxy implements Runnable {
 			int count = buf.remaining();
 			try {
 				socketChannel.write(buf);
+			} catch (ClosedByInterruptException e) {
+				throw e;
 			} catch (IOException e) {
 				if (PEER_RESET_CONNECTION_EXCEPTION.equals(e.toString())) {
 					if (LOG.isInfoEnabled()) {
