@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
@@ -49,8 +50,10 @@ public class NioProxy implements Runnable {
 	public void run() {
 		try {
 			startSelector();
+		} catch (CancelledKeyException e) {
+			LOG.info(e, e);
 		} catch (ClosedByInterruptException e) {
-			LOG.info("Thread interrupted", e);
+			LOG.info(e, e);
 		} catch (IOException e) {
 			LOG.error(e, e);
 		} finally {
@@ -270,6 +273,7 @@ public class NioProxy implements Runnable {
 			int count = buf.remaining();
 			try {
 				socketChannel.write(buf);
+				writedBytes.put(socketChannel, writedBytes.get(socketChannel) + count - buf.remaining());
 			} catch (ClosedByInterruptException e) {
 				throw e;
 			} catch (IOException e) {
@@ -280,8 +284,8 @@ public class NioProxy implements Runnable {
 					LOG.error(exceptionMessage, e);
 				}
 				closeBothConnections(selectionKey);
+				return;
 			}
-			writedBytes.put(socketChannel, writedBytes.get(socketChannel) + count - buf.remaining());
 			if (buf.remaining() > 0) {
 				break;
 			}
