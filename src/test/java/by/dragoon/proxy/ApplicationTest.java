@@ -145,7 +145,7 @@ public class ApplicationTest {
 			do {
 				readChannel.write(retBuffer);
 				rez += writeChannel.read(echoBuffer);
-			} while (buffer.remaining() > 0);
+			} while (retBuffer.remaining() > 0);
 
 			while (rez < array.length) {
 				rez += writeChannel.read(echoBuffer);
