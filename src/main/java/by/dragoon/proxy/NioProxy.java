@@ -29,6 +29,7 @@ public class NioProxy implements Runnable {
 
 	private static final Logger LOG = Logger.getLogger(NioProxy.class);
 	private static final String PEER_RESET_CONNECTION_EXCEPTION = "java.io.IOException: Connection reset by peer";
+	private static final String CONNECTION_REFUSED = "java.net.ConnectException: Connection refused";
 
 	private Selector connectionsSelector;
 	private ByteBuffer buffer = ByteBuffer.allocate(8192);
@@ -58,11 +59,6 @@ public class NioProxy implements Runnable {
 				this.channels.toArray(channels);
 				for (SelectableChannel channel : channels) {
 					closeChannel(channel);
-				}
-				for (SelectableChannel channel : channels) {
-					if (channel.isOpen()) {
-						closeChannel(channel);
-					}
 				}
 				try {
 					connectionsSelector.close();
@@ -177,8 +173,13 @@ public class NioProxy implements Runnable {
 		} catch (ClosedByInterruptException e) {
 			throw e;
 		} catch (IOException e) {
-			LOG.error(e, e);
-			closeChannel(socketChannel);
+			String exceptionMessage = e.toString();
+			if (CONNECTION_REFUSED.equals(exceptionMessage)) {
+				LOG.info(exceptionMessage);
+			} else {
+				LOG.error(exceptionMessage, e);
+			}
+			closeBothConnections(selectionKey);
 			return;
 		}
 
@@ -199,12 +200,11 @@ public class NioProxy implements Runnable {
 		} catch (ClosedByInterruptException e) {
 			throw e;
 		} catch (IOException e) {
-			if (PEER_RESET_CONNECTION_EXCEPTION.equals(e.toString())) {
-				if (LOG.isInfoEnabled()) {
-					LOG.info(e, e);
-				}
+			String exceptionMessage = e.toString();
+			if (PEER_RESET_CONNECTION_EXCEPTION.equals(exceptionMessage)) {
+				LOG.info(exceptionMessage);
 			} else {
-				LOG.error(e, e);
+				LOG.error(exceptionMessage, e);
 			}
 			closeBothConnections(readingSelectionKey);
 			return;
@@ -222,11 +222,10 @@ public class NioProxy implements Runnable {
 		LinkedList<ByteBuffer> queue = pendingMessages.get(writeSelectionChannel);
 		if (queue != null) {
 			queue.add(ByteBuffer.wrap(write));
+			SelectionKey writeSelectionKey = writeSelectionChannel.keyFor(connectionsSelector);
+			writeSelectionKey.interestOps(writeSelectionKey.interestOps() | SelectionKey.OP_WRITE);
 		}
 		readedBytes.put(socketChannel, readedBytes.get(socketChannel) + numRead);
-
-		SelectionKey writeSelectionKey = writeSelectionChannel.keyFor(connectionsSelector);
-		writeSelectionKey.interestOps(SelectionKey.OP_WRITE);
 	}
 
 	private void closeBothConnections(SelectionKey selectionKey) {
@@ -244,6 +243,7 @@ public class NioProxy implements Runnable {
 			LOG.info(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel),
 					readedBytes.get(channel)));
 		}
+
 		pendingMessages.remove(channel);
 		writedBytes.remove(channel);
 		readedBytes.remove(channel);
@@ -273,12 +273,11 @@ public class NioProxy implements Runnable {
 			} catch (ClosedByInterruptException e) {
 				throw e;
 			} catch (IOException e) {
-				if (PEER_RESET_CONNECTION_EXCEPTION.equals(e.toString())) {
-					if (LOG.isInfoEnabled()) {
-						LOG.info(e, e);
-					}
+				String exceptionMessage = e.toString();
+				if (PEER_RESET_CONNECTION_EXCEPTION.equals(exceptionMessage)) {
+					LOG.info(exceptionMessage);
 				} else {
-					LOG.error(e, e);
+					LOG.error(exceptionMessage, e);
 				}
 				closeBothConnections(selectionKey);
 			}
