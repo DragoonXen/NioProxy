@@ -140,6 +140,12 @@ public class NioProxy implements Runnable {
 		}
 	}
 
+	/**
+	 * Accept requested connections
+	 *
+	 * @param selectionKey SelectionKey correspond to acceptable ServerSocketChannel
+	 * @throws IOException If an I/O error occurs
+	 */
 	private void acceptConnection(SelectionKey selectionKey) throws IOException {
 		// only accepting keys contain ConfigNode as attach
 		ConfigNode configNode = (ConfigNode) selectionKey.attachment();
@@ -215,7 +221,7 @@ public class NioProxy implements Runnable {
 	/**
 	 * Read data from selected readable socketChannel
 	 *
-	 * @param selectionKey selectionKey correspond to readable socketChannel
+	 * @param selectionKey SelectionKey correspond to readable socketChannel
 	 * @throws ClosedByInterruptException If current thread interrupt
 	 */
 	private void readData(SelectionKey selectionKey) throws ClosedByInterruptException {
@@ -303,7 +309,7 @@ public class NioProxy implements Runnable {
 	/**
 	 * write pending data into selected writable socketChannel
 	 *
-	 * @param selectionKey selectionKey correspond to writable socketChannel
+	 * @param selectionKey SelectionKey correspond to writable socketChannel
 	 * @throws ClosedByInterruptException If current thread interrupt
 	 */
 	private void writeData(SelectionKey selectionKey) throws ClosedByInterruptException {
@@ -330,14 +336,14 @@ public class NioProxy implements Runnable {
 				closeBothConnections(selectionKey);
 				return;
 			}
-			if (writingBuffer.remaining() > 0) { // If not all buffer data has writed into socket
+			if (writingBuffer.remaining() > 0) { // If not all current buffer data had write into socket
 				break;
 			}
 			queue.removeFirst();
 		}
 
 		if (queue.isEmpty()) {
-			// If paired connection exist set read state to this connection. Otherwise close this connection
+			// If paired connection exist, set read state to current connection. Otherwise, close current connection
 			if (openedChannels.contains(selectionKey.attachment())) {
 				selectionKey.interestOps(SelectionKey.OP_READ);
 			} else {
