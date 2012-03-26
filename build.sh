@@ -7,5 +7,5 @@ else
 	mkdir bin
 fi
 cp target/TCP_Port_Mapper-*-jar-with-dependencies.jar bin/TCP_Port_Mapper.jar
-cp *.properties bin/
+cp target/proxy.properties bin/
 

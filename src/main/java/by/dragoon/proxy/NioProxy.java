@@ -39,8 +39,6 @@ public class NioProxy implements Runnable {
 	private List<ConfigNode> configNodes;
 	private Map<SelectableChannel, LinkedList<ByteBuffer>> pendingMessages = new HashMap<SelectableChannel,
 			LinkedList<ByteBuffer>>();
-	private Map<SelectableChannel, Integer> writedBytes = new HashMap<SelectableChannel, Integer>();
-	private Map<SelectableChannel, Integer> readedBytes = new HashMap<SelectableChannel, Integer>();
 	private Set<SelectableChannel> channels = new HashSet<SelectableChannel>();
 
 	public NioProxy(List<ConfigNode> configNodes) {
@@ -160,10 +158,6 @@ public class NioProxy implements Runnable {
 
 		pendingMessages.put(localSocketChannel, new LinkedList<ByteBuffer>());
 		pendingMessages.put(remoteSocketChannel, new LinkedList<ByteBuffer>());
-		readedBytes.put(localSocketChannel, 0);
-		readedBytes.put(remoteSocketChannel, 0);
-		writedBytes.put(localSocketChannel, 0);
-		writedBytes.put(remoteSocketChannel, 0);
 		channels.add(localSocketChannel);
 		channels.add(remoteSocketChannel);
 
@@ -238,7 +232,6 @@ public class NioProxy implements Runnable {
 				writeSelectionKey.interestOps(writeSelectionKey.interestOps() | SelectionKey.OP_WRITE);
 			}
 		}
-		readedBytes.put(socketChannel, readedBytes.get(socketChannel) + numRead);
 	}
 
 	private void closeBothConnections(SelectionKey selectionKey) {
@@ -253,13 +246,9 @@ public class NioProxy implements Runnable {
 	private void closeChannel(SelectableChannel channel) {
 		if (LOG.isInfoEnabled()) {
 			LOG.info("Close connection " + channel.hashCode());
-			LOG.info(String.format("Bytes writed: %s, Bytes readed: %s", writedBytes.get(channel),
-					readedBytes.get(channel)));
 		}
 
 		pendingMessages.remove(channel);
-		writedBytes.remove(channel);
-		readedBytes.remove(channel);
 
 		try {
 			channel.close();
@@ -283,10 +272,8 @@ public class NioProxy implements Runnable {
 
 		while (!queue.isEmpty()) {
 			ByteBuffer buf = queue.getFirst();
-			int count = buf.remaining();
 			try {
 				socketChannel.write(buf);
-				writedBytes.put(socketChannel, writedBytes.get(socketChannel) + count - buf.remaining());
 			} catch (ClosedByInterruptException e) {
 				throw e;
 			} catch (IOException e) {
