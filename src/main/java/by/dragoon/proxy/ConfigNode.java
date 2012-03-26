@@ -78,7 +78,7 @@ public class ConfigNode {
 		return name;
 	}
 
-	public InetSocketAddress getRemoteSocketAdress() {
+	public InetSocketAddress getRemoteSocketAddress() {
 		if (remoteSocketAdress == null && isConfigured()) {
 			remoteSocketAdress = new InetSocketAddress(remoteHost, remotePort);
 		}

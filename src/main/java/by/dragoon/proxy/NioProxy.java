@@ -13,6 +13,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.channels.UnresolvedAddressException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -94,13 +95,11 @@ public class NioProxy implements Runnable {
 			} catch (BindException e) {
 				LOG.error(String.format("Error while binding to %s", socketAddress), e);
 			}
-
 			serverSocketChannel.register(connectionsSelector, SelectionKey.OP_ACCEPT).attach(configNode);
 		}
 
 		while (!Thread.interrupted()) {
 			int selectionKeysCount = connectionsSelector.select();
-
 			if (selectionKeysCount == 0) {
 				continue;
 			}
@@ -135,17 +134,26 @@ public class NioProxy implements Runnable {
 		ConfigNode configNode = (ConfigNode) selectionKey.attachment();
 		ServerSocketChannel serverSocketChannel = (ServerSocketChannel) selectionKey.channel();
 		if (LOG.isInfoEnabled()) {
-			LOG.info(String.format("Attempting connect to %s (local port %s)", configNode.getRemoteSocketAdress(),
+			LOG.info(String.format("Attempting connect to %s (local port %s)", configNode.getRemoteSocketAddress(),
 					configNode.getLocalPort()));
 		}
 
 		SocketChannel localSocketChannel = serverSocketChannel.accept();
 		localSocketChannel.configureBlocking(false);
-		SelectionKey acceptedSelectionKey = localSocketChannel.register(connectionsSelector, SelectionKey.OP_READ);
-
 		SocketChannel remoteSocketChannel = SocketChannel.open();
 		remoteSocketChannel.configureBlocking(false);
-		remoteSocketChannel.connect(configNode.getRemoteSocketAdress());
+
+		try {
+			remoteSocketChannel.connect(configNode.getRemoteSocketAddress());
+		} catch (UnresolvedAddressException e) {
+			LOG.error(e, e);
+			closeChannel(selectionKey.channel());
+			closeChannel(localSocketChannel);
+			closeChannel(remoteSocketChannel);
+			return;
+		}
+
+		SelectionKey acceptedSelectionKey = localSocketChannel.register(connectionsSelector, SelectionKey.OP_READ);
 		SelectionKey connectedSelectionKey = remoteSocketChannel.register(connectionsSelector, SelectionKey.OP_CONNECT);
 		connectedSelectionKey.attach(localSocketChannel);
 		acceptedSelectionKey.attach(remoteSocketChannel);
@@ -226,7 +234,9 @@ public class NioProxy implements Runnable {
 		if (queue != null) {
 			queue.add(ByteBuffer.wrap(write));
 			SelectionKey writeSelectionKey = writeSelectionChannel.keyFor(connectionsSelector);
-			writeSelectionKey.interestOps(writeSelectionKey.interestOps() | SelectionKey.OP_WRITE);
+			if ((writeSelectionKey.interestOps() & SelectionKey.OP_CONNECT) == 0) {
+				writeSelectionKey.interestOps(writeSelectionKey.interestOps() | SelectionKey.OP_WRITE);
+			}
 		}
 		readedBytes.put(socketChannel, readedBytes.get(socketChannel) + numRead);
 	}
@@ -257,7 +267,10 @@ public class NioProxy implements Runnable {
 		} catch (IOException e) {
 			LOG.error(e, e);
 		}
-		channel.keyFor(connectionsSelector).cancel();
+		SelectionKey channelKey = channel.keyFor(connectionsSelector);
+		if (channelKey != null) {
+			channelKey.cancel();
+		}
 	}
 
 	private void writeData(SelectionKey selectionKey) throws ClosedByInterruptException {

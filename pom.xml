@@ -112,15 +112,15 @@
             <properties>
                 <log4j.log.level>debug</log4j.log.level>
             </properties>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
         </profile>
         <profile>
             <id>info</id>
             <properties>
                 <log4j.log.level>info</log4j.log.level>
             </properties>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
         </profile>
         <profile>
             <id>release</id>

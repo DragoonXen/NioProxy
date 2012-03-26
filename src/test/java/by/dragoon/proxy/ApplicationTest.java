@@ -44,6 +44,7 @@ public class ApplicationTest {
 			Assert.fail();
 		}
 		LOG.info("Proxy thread ready");
+		fail = false;
 	}
 
 	@After
