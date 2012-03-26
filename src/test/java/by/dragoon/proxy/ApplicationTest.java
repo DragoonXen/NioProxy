@@ -21,7 +21,7 @@ public class ApplicationTest {
 
 	private final static int PROXY_CONNECTION_PORT = 8789;
 	private final static int PROXY_LISTEN_PORT = 8788;
-	private final static int BUFFER_SIZE = 27325253;
+	private final static int BUFFER_SIZE = 27323253;
 	private Thread proxyThread;
 	private boolean fail = false;
 

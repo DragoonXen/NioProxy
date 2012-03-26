@@ -25,8 +25,10 @@ public class Application {
 			properties.load(new FileInputStream(PROPERTY_FILE));
 		} catch (FileNotFoundException e) {
 			LOG.error(String.format("File %s does not exist", PROPERTY_FILE), e);
+			return;
 		} catch (IOException e) {
-			LOG.error(e, e);
+			LOG.error(e.getMessage(), e);
+			return;
 		}
 
 		Thread workingThread = new Thread(new NioProxy(getConfiguredNodes(properties)));
@@ -43,7 +45,7 @@ public class Application {
 		try {
 			workingThread.join();
 		} catch (InterruptedException e) {
-			LOG.error(e, e);
+			LOG.error(e.getMessage(), e);
 		}
 	}
 
